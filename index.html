@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>瓶中沧海 · Voxel Ocean in a Bottle</title>
+<style>
+  :root{color-scheme:dark;--ivory:#f3e7cd;--gold:#d5aa67;--glass:rgba(220,238,232,.12)}
+  *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#171511;font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif}
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  #ui{position:fixed;inset:0;pointer-events:none;color:var(--ivory);z-index:3}
+  .brand{position:absolute;top:34px;left:40px;text-shadow:0 2px 18px #0009}
+  .eyebrow{font-size:10px;letter-spacing:.34em;color:var(--gold);text-transform:uppercase;margin-bottom:11px}
+  h1{font-family:Georgia,"Noto Serif SC","Songti SC",serif;font-weight:400;font-size:clamp(34px,4.2vw,58px);letter-spacing:.15em;margin:0 0 8px;line-height:1}
+  .subtitle{font-family:Georgia,serif;font-style:italic;font-size:12px;letter-spacing:.13em;color:#d8cbb4aa}
+  .rule{width:46px;height:1px;background:var(--gold);margin-top:18px;opacity:.65}
+  .status{position:absolute;right:34px;top:32px;width:190px;padding:16px 18px;border:1px solid #e4c99425;border-radius:3px;background:linear-gradient(135deg,rgba(31,31,27,.68),rgba(31,25,20,.32));backdrop-filter:blur(12px);box-shadow:0 12px 32px #0002}
+  .status-row{display:flex;justify-content:space-between;align-items:center;font-size:10px;letter-spacing:.15em;color:#c8bda8;margin:5px 0}
+  .status-row strong{font-size:11px;color:#f0d69d;font-weight:500;letter-spacing:.08em}
+  .status .divider{height:1px;background:#e4c99418;margin:11px 0}
+  #fps{font-variant-numeric:tabular-nums;color:#9bbca7}
+  .controls{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #e8d3ac24;border-radius:999px;background:#171b1bba;backdrop-filter:blur(16px);box-shadow:0 10px 40px #0005;pointer-events:auto;white-space:nowrap}
+  .controls button{appearance:none;border:0;border-radius:999px;background:transparent;color:#bcb5a8;font:500 11px/1 Inter,"Microsoft YaHei",sans-serif;letter-spacing:.08em;padding:11px 15px;cursor:pointer;transition:.25s}
+  .controls button:hover{color:#fff0d0;background:#ffffff0b}
+  .controls button.active{background:#d8b478;color:#25231f;box-shadow:0 2px 12px #d8b47835}
+  .controls .sep{width:1px;height:19px;background:#ffffff18;margin:0 3px}
+  .storm-key{display:flex;align-items:center;gap:9px;color:#b8b3aa;font-size:10px;letter-spacing:.08em;padding:0 13px 0 8px}
+  kbd{font:9px/1 Inter,sans-serif;border:1px solid #d6c5a64d;border-bottom-width:2px;padding:5px 7px;border-radius:4px;color:#e7d4ae;background:#ffffff08}
+  .hint{position:absolute;left:40px;bottom:36px;color:#c9bda54f;font-size:9px;letter-spacing:.17em}
+  #stormBanner{position:absolute;top:132px;left:50%;transform:translateX(-50%) translateY(-8px);font:10px/1.4 Inter,"Microsoft YaHei",sans-serif;letter-spacing:.35em;color:#d9e4e5;opacity:0;transition:.35s;text-shadow:0 0 18px #9fd8ff}
+  #stormBanner.on{opacity:.9;transform:translateX(-50%) translateY(0)}
+  #loading{position:fixed;inset:0;z-index:10;background:radial-gradient(circle at 50% 45%,#263a39,#171511 65%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#e8d9bc;transition:opacity .8s}
+  #loading.hide{opacity:0;pointer-events:none}
+  .loader-mark{width:42px;height:42px;border:1px solid #d5aa6744;border-top-color:#d5aa67;border-radius:50%;animation:spin 1.3s linear infinite;margin-bottom:20px}
+  #loading p{font-family:Georgia,"Songti SC",serif;letter-spacing:.3em;font-size:13px;margin:0 0 10px}
+  #loading small{font-size:9px;letter-spacing:.2em;color:#d5aa6788}
+  #loadError{max-width:440px;text-align:center;line-height:1.8;color:#e8b8a0;padding:20px;display:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media(max-width:700px){.brand{left:20px;top:22px}.status{right:16px;top:18px;width:150px;padding:10px 12px}.hint{display:none}.controls{bottom:16px;gap:2px}.controls button{padding:10px}.storm-key{padding-right:8px}.storm-key span{display:none}h1{font-size:32px}.subtitle{font-size:9px}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="loading"><div class="loader-mark"></div><p>正在注入一片沧海</p><small>THREE.JS r160 · PROCEDURAL VOXELS</small><div id="loadError"></div></div>
+<div id="ui">
+  <div class="brand"><div class="eyebrow">Cabinet of impossible things · Nº 160</div><h1>瓶中沧海</h1><div class="subtitle">An ocean, held in glass.</div><div class="rule"></div></div>
+  <div class="status">
+    <div class="status-row"><span>时刻</span><strong id="phase">黄昏</strong></div>
+    <div class="status-row"><span>船态</span><strong id="sailing">绕岛巡航</strong></div>
+    <div class="divider"></div>
+    <div class="status-row"><span>流逝</span><strong id="speedRead">× 1</strong></div>
+    <div class="status-row"><span>帧率</span><strong id="fps">— FPS</strong></div>
+  </div>
+  <div id="stormBanner">风 暴 正 在 经 过</div>
+  <div class="hint">拖动环视 · 滚轮缩放 · 闲置自动环绕</div>
+  <div class="controls" aria-label="延时摄影控制">
+    <button data-speed="4">× 4</button><button data-speed="12">× 12</button><button data-speed="1" class="active">× 1</button><button data-speed="0">暂停</button>
+    <div class="sep"></div><div class="storm-key" id="stormButton" role="button" tabindex="0" title="按住 Space，或点击切换风暴"><kbd>SPACE</kbd><span>按住掀起风暴</span></div>
+  </div>
+</div>
+<script>
+window.addEventListener('error',function(e){const el=document.getElementById('loadError');if(el&&!document.getElementById('loading').classList.contains('hide')){el.style.display='block';el.textContent='场景载入失败。请确认 Chrome 可以访问 jsDelivr CDN，然后刷新页面。'+(e.message?'（'+e.message+'）':'');}});
+setTimeout(function(){if(!window.__BOTTLE_READY__){const el=document.getElementById('loadError');el.style.display='block';el.textContent='仍在等待 Three.js CDN。首次打开需要网络连接；请检查网络后刷新。';}},15000);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const SEA = -0.62;
+const TAU = Math.PI * 2;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x211e19);
+scene.fog = new THREE.FogExp2(0x211e19, 0.018);
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.05, 120);
+camera.position.set(12.5, 7.4, 22.5);
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+const controls = new OrbitControls(camera,renderer.domElement);
+controls.target.set(0,-0.35,0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.055;
+controls.minDistance = 15;
+controls.maxDistance = 38;
+controls.minPolarAngle = 0.32;
+controls.maxPolarAngle = Math.PI * 0.515;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.34;
+let idleTimer;
+controls.addEventListener('start',()=>{controls.autoRotate=false;clearTimeout(idleTimer);});
+controls.addEventListener('end',()=>{idleTimer=setTimeout(()=>controls.autoRotate=true,4200);});
+
+let seed = 160;
+function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;}
+const clamp=THREE.MathUtils.clamp;
+const lerp=THREE.MathUtils.lerp;
+const unitBox = new THREE.BoxGeometry(1,1,1);
+const voxelMat = new THREE.MeshStandardMaterial({color:0xffffff,roughness:.78,metalness:.04});
+const glowMat = new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
+const tempObj = new THREE.Object3D();
+const tempColor = new THREE.Color();
+class VoxelBatch{
+  constructor(){this.items=[];}
+  add(x,y,z,sx,sy,sz,color,rx=0,ry=0,rz=0){this.items.push({x,y,z,sx,sy,sz,color,rx,ry,rz});return this;}
+  build(parent,{glow=false,shadow=true,name='voxels'}={}){
+    const mesh=new THREE.InstancedMesh(unitBox,glow?glowMat:voxelMat,this.items.length);
+    mesh.name=name;
+    for(let i=0;i<this.items.length;i++){
+      const v=this.items[i];tempObj.position.set(v.x,v.y,v.z);tempObj.scale.set(v.sx,v.sy,v.sz);tempObj.rotation.set(v.rx,v.ry,v.rz);tempObj.updateMatrix();
+      mesh.setMatrixAt(i,tempObj.matrix);mesh.setColorAt(i,tempColor.set(v.color));
+    }
+    mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+    mesh.castShadow=shadow&&!glow;mesh.receiveShadow=shadow&&!glow;parent.add(mesh);return mesh;
+  }
+}
+function mesh(geo,mat,parent,pos=[0,0,0],rot=[0,0,0]){const m=new THREE.Mesh(geo,mat);m.position.set(...pos);m.rotation.set(...rot);parent.add(m);return m;}
+function cylinderBetween(a,b,r,mat,parent,segments=8){
+  const av=new THREE.Vector3(...a),bv=new THREE.Vector3(...b),d=bv.clone().sub(av);
+  const m=mesh(new THREE.CylinderGeometry(r,r,d.length(),segments),mat,parent);
+  m.position.copy(av.add(bv).multiplyScalar(.5));m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());m.castShadow=true;return m;
+}
+function radiusAt(x){
+  if(x<-5.82||x>7.9)return 0;
+  if(x<4.45)return 3.18;
+  if(x<5.95)return lerp(3.18,1.02,(x-4.45)/1.5);
+  return 1.02;
+}
+function insideBottle(p,margin=.12){
+  const r=radiusAt(p.x)-margin;if(r<=0)return false;
+  return p.y*p.y+p.z*p.z<=r*r;
+}
+function waveHeight(x,z,t,storm=0){
+  const a=.07+storm*.16;
+  return a*(Math.sin(x*1.5+t*1.65)+.48*Math.sin(z*2.25-x*.65+t*2.1)+.28*Math.sin((x+z)*3.1-t*1.25));
+}
+
+const hemi=new THREE.HemisphereLight(0xd9c39b,0x27383a,1.45);scene.add(hemi);
+const key=new THREE.DirectionalLight(0xffc681,3.2);key.position.set(-8,12,9);key.castShadow=true;
+key.shadow.mapSize.set(1024,1024);key.shadow.camera.left=-15;key.shadow.camera.right=15;key.shadow.camera.top=12;key.shadow.camera.bottom=-10;key.shadow.bias=-.0006;scene.add(key);
+const rim=new THREE.DirectionalLight(0x75b9c2,1.4);rim.position.set(7,5,-9);scene.add(rim);
+const roomGlow=new THREE.PointLight(0xff9d4c,40,24,2);roomGlow.position.set(-8,3,-2);scene.add(roomGlow);
+const innerFill=new THREE.PointLight(0xffe2b0,24,18,1.7);innerFill.position.set(0,4.5,6);scene.add(innerFill);
+const innerCool=new THREE.DirectionalLight(0x9ed7cf,1.35);innerCool.position.set(-2,3,5);scene.add(innerCool);
+
+const room=new THREE.Group();scene.add(room);
+const wallMat=new THREE.MeshStandardMaterial({color:0x302a23,roughness:1});
+const back=mesh(new THREE.PlaneGeometry(55,28),wallMat,room,[0,5,-9]);back.receiveShadow=true;
+const woodMat=new THREE.MeshStandardMaterial({color:0x4b2f20,roughness:.73});
+const darkWood=new THREE.MeshStandardMaterial({color:0x291c16,roughness:.84});
+const brass=new THREE.MeshStandardMaterial({color:0xb48642,roughness:.32,metalness:.78});
+const ropeMat=new THREE.MeshStandardMaterial({color:0x6e4d2b,roughness:1});
+const redWax=new THREE.MeshStandardMaterial({color:0x8e2022,roughness:.38});
+const corkMat=new THREE.MeshStandardMaterial({color:0x9b7043,roughness:1});
+const table=new THREE.Group();room.add(table);
+const tableVox=new VoxelBatch();
+for(let z=-5;z<=5;z+=1){tableVox.add(0,-4.55,z,23,.48,.94,z%2?0x503426:0x593a28);for(let g=0;g<3;g++)tableVox.add(-9+rnd()*18,-4.302,z-.32+rnd()*.64,.7+rnd()*2,.012,.018,0x291a13);}
+for(const x of[-9,9])for(const z of[-3.8,3.8])tableVox.add(x,-6.6,z,.75,3.8,.75,0x352218);
+tableVox.build(table,{name:'桌面木板'});
+const stand=new VoxelBatch();
+for(const x of[-3.8,3.5]){
+  stand.add(x,-4.05,0,1.15,.5,6.0,0x382419);
+  stand.add(x,-3.75,0,.85,.28,4.8,0x6b452a);
+  for(const z of[-2.25,2.25]){stand.add(x,-3.45,z,.85,.55,1.05,0x4b301f);stand.add(x,-3.12,z*.89,.85,.3,.8,0x6d472c);}
+}
+stand.build(room,{name:'木托架'});
+
+// 背景窗框与暖色暮光
+const windowGroup=new THREE.Group();windowGroup.position.set(-8,3.2,-8.85);room.add(windowGroup);
+const windowGlow=new THREE.MeshBasicMaterial({color:0x9f6840,transparent:true,opacity:.38});
+mesh(new THREE.PlaneGeometry(6,7),windowGlow,windowGroup);
+const windowFrame=new VoxelBatch();
+for(const x of[-3,0,3])windowFrame.add(x,0,.05,.15,7.2,.18,0x241a14);
+for(const y of[-3.5,0,3.5])windowFrame.add(0,y,.05,6.2,.15,.18,0x241a14);
+windowFrame.build(windowGroup,{shadow:false});
+
+// 旧书
+const books=new THREE.Group();books.position.set(-8.1,-4.03,1.5);books.rotation.y=-.16;room.add(books);
+const bookColors=[0x35433b,0x6b352b,0x3b3030];
+for(let i=0;i<3;i++){
+  const b=new THREE.Group();b.position.set(i*.12,i*.34,0);b.rotation.y=(i-1)*.07;books.add(b);
+  mesh(new THREE.BoxGeometry(3.1,.28,2.15),new THREE.MeshStandardMaterial({color:bookColors[i],roughness:.9}),b);
+  mesh(new THREE.BoxGeometry(2.92,.19,2.04),new THREE.MeshStandardMaterial({color:0xb7a17b,roughness:1}),b,[.08,0,0]);
+  const band=new VoxelBatch();for(const z of[-.8,.8])band.add(-1.48,.02,z,.08,.34,.12,0xb18a4d);band.build(b);
+}
+// 黄铜望远镜与三脚架
+const telescope=new THREE.Group();telescope.position.set(7.3,-3.95,2.85);telescope.rotation.y=-.55;room.add(telescope);
+cylinderBetween([-1.3,1.45,0],[1.15,2.15,0],.25,brass,telescope,16);
+cylinderBetween([.85,2.07,0],[1.65,2.28,0],.34,brass,telescope,16);
+cylinderBetween([-1.55,1.37,0],[-1.1,1.5,0],.16,darkWood,telescope,12);
+for(const p of[[-.75,-.05,.75],[.75,-.05,.75],[0,-.05,-.85]])cylinderBetween([0,1.45,0],p,.065,brass,telescope,8);
+
+const bottleRoot=new THREE.Group();bottleRoot.position.y=.2;scene.add(bottleRoot);
+const innerWorld=new THREE.Group();bottleRoot.add(innerWorld);
+
+// 瓶身：统一 Lathe 轮廓，长轴沿 X
+const profile=[new THREE.Vector2(0,-6.02),new THREE.Vector2(2.85,-6.02),new THREE.Vector2(3.18,-5.82),new THREE.Vector2(3.27,-5.5),new THREE.Vector2(3.27,4.35),new THREE.Vector2(3.18,4.7),new THREE.Vector2(2.8,5.12),new THREE.Vector2(2.05,5.55),new THREE.Vector2(1.15,5.92),new THREE.Vector2(1.02,6.18),new THREE.Vector2(1.02,7.95),new THREE.Vector2(1.13,8.03)];
+const bottleGeo=new THREE.LatheGeometry(profile,96);bottleGeo.rotateZ(-Math.PI/2);bottleGeo.computeVertexNormals();
+const glassMat=new THREE.ShaderMaterial({
+  transparent:true,depthWrite:false,side:THREE.DoubleSide,
+  uniforms:{uStorm:{value:0},uNight:{value:0}},
+  vertexShader:`varying vec3 vWorld;varying vec3 vN;varying vec3 vLocal;
+  void main(){vLocal=position;vec4 w=modelMatrix*vec4(position,1.);vWorld=w.xyz;vN=normalize(mat3(modelMatrix)*normal);gl_Position=projectionMatrix*viewMatrix*w;}`,
+  fragmentShader:`uniform float uStorm;uniform float uNight;varying vec3 vWorld;varying vec3 vN;varying vec3 vLocal;
+  void main(){vec3 V=normalize(cameraPosition-vWorld);vec3 N=normalize(vN);float fr=pow(1.-abs(dot(N,V)),2.25);vec3 L=normalize(vec3(-.5,.8,.65));float sp=pow(max(dot(reflect(-L,N),V),0.),42.);float stripe=pow(max(dot(N,normalize(vec3(-.25,.45,1.))),0.),20.);vec3 col=mix(vec3(.32,.62,.61),vec3(.79,.96,.88),fr)+sp*vec3(1.,.78,.48)+stripe*.12;float a=.025+fr*.34+sp*.19+stripe*.035+uStorm*.02;gl_FragColor=vec4(col,clamp(a,0.,.68));}`
+});
+const glass=mesh(bottleGeo,glassMat,bottleRoot);glass.renderOrder=20;glass.name='菲涅尔玻璃瓶';
+const glassRimMat=new THREE.MeshBasicMaterial({color:0xb8e1d6,transparent:true,opacity:.22,depthWrite:false});
+for(const x of[-5.82,7.98]){const ring=mesh(new THREE.TorusGeometry(x<0?2.98:1.1,.035,8,64),glassRimMat,bottleRoot,[x,0,0],[0,Math.PI/2,0]);ring.renderOrder=21;}
+for(const x of[-4.6,-3.9]){const ring=mesh(new THREE.TorusGeometry(3.275,.012,5,64),glassRimMat,bottleRoot,[x,0,0],[0,Math.PI/2,0]);ring.material=glassRimMat.clone();ring.material.opacity=.09;ring.renderOrder=21;}
+// 软木、红蜡与颈绳
+mesh(new THREE.CylinderGeometry(.91,.96,1.35,24),corkMat,bottleRoot,[8.22,0,0],[0,0,-Math.PI/2]);
+mesh(new THREE.CylinderGeometry(1.01,.98,.22,24),redWax,bottleRoot,[8.9,0,0],[0,0,-Math.PI/2]);
+const wax=new VoxelBatch();wax.add(8.93,0,0,.16,1.45,1.45,0x8e2022);wax.add(8.99,0,0,.12,.7,.7,0x66191c);
+for(let i=0;i<8;i++){const a=i/8*TAU;wax.add(8.68,Math.cos(a)*.91,Math.sin(a)*.91,.5,.13,.13,0x8e2022);}
+wax.build(bottleRoot,{name:'红蜡封'});
+for(const x of[6.55,6.78,7.02])mesh(new THREE.TorusGeometry(1.09,.055,7,48),ropeMat,bottleRoot,[x,0,0],[0,Math.PI/2,0]);
+const ropeCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(6.7,-.8,.8),new THREE.Vector3(6.55,-1.55,1.05),new THREE.Vector3(6.85,-2.1,1.25),new THREE.Vector3(7.1,-2.2,1.3)]);
+mesh(new THREE.TubeGeometry(ropeCurve,24,.045,6,false),ropeMat,bottleRoot);
+const tag=new THREE.Group();tag.position.set(7.12,-2.65,1.32);tag.rotation.set(-.1,.2,-.12);bottleRoot.add(tag);
+mesh(new THREE.BoxGeometry(1.15,1.35,.09),new THREE.MeshStandardMaterial({color:0xc9b48b,roughness:1}),tag);
+const tagCanvas=document.createElement('canvas');tagCanvas.width=256;tagCanvas.height=300;const tc=tagCanvas.getContext('2d');tc.fillStyle='#c9b48b';tc.fillRect(0,0,256,300);tc.strokeStyle='#6d5435';tc.lineWidth=3;tc.strokeRect(15,15,226,270);tc.fillStyle='#57432f';tc.textAlign='center';tc.font='bold 42px serif';tc.fillText('沧 海',128,125);tc.font='18px serif';tc.fillText('MARIS · 160',128,170);tc.beginPath();tc.arc(128,45,8,0,TAU);tc.stroke();const tagTex=new THREE.CanvasTexture(tagCanvas);tagTex.colorSpace=THREE.SRGBColorSpace;
+mesh(new THREE.PlaneGeometry(1.08,1.27),new THREE.MeshBasicMaterial({map:tagTex,transparent:true}),tag,[0,0,.051]);
+
+// 深水体：瓶内侧面在水线以下渐深，无海床
+const volumeMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,
+  uniforms:{uSea:{value:SEA},uNight:{value:0}},
+  vertexShader:`varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`uniform float uSea;uniform float uNight;varying vec3 vP;void main(){if(vP.y>uSea+.015)discard;float d=clamp((uSea-vP.y)/3.2,0.,1.);vec3 top=mix(vec3(.035,.43,.43),vec3(.018,.16,.25),uNight);vec3 bot=mix(vec3(.012,.09,.15),vec3(.006,.025,.075),uNight);gl_FragColor=vec4(mix(top,bot,d),mix(.08,.25,d));}`
+});
+const volume=mesh(bottleGeo.clone(),volumeMat,innerWorld);volume.scale.set(.986,.986,.986);volume.renderOrder=2;volume.name='渐变深水体';
+
+// GPU 体素浪面
+const waterCells=[];const cell=.22;
+for(let x=-5.66;x<=7.55;x+=cell){for(let z=-3.05;z<=3.05;z+=cell){const r=radiusAt(x)-.13;if(r<=0)continue;const half=Math.sqrt(Math.max(0,r*r-SEA*SEA));if(Math.abs(z)+cell*.56<half&&Math.abs(z)+cell*.56<r-.03)waterCells.push([x,SEA,z]);}}
+const waterUniforms={uTime:{value:0},uStorm:{value:0},uNight:{value:0}};
+const waterMat=new THREE.ShaderMaterial({transparent:true,depthWrite:true,uniforms:waterUniforms,
+  vertexShader:`uniform float uTime;uniform float uStorm;varying float vH;varying vec3 vP;
+  float wave(vec2 p){float a=.07+uStorm*.16;return a*(sin(p.x*1.5+uTime*1.65)+.48*sin(p.y*2.25-p.x*.65+uTime*2.1)+.28*sin((p.x+p.y)*3.1-uTime*1.25));}
+  float bottleRadius(float x){if(x<4.45)return 3.13;if(x<5.95)return mix(3.13,.97,(x-4.45)/1.5);return .97;}
+  void main(){vec4 c=instanceMatrix*vec4(0.,0.,0.,1.);vec4 p=instanceMatrix*vec4(position,1.);float h=wave(c.xz);float r=min(bottleRadius(c.x-.1034),bottleRadius(c.x+.1034));float zMax=abs(c.z)+.1034;float bottom=-sqrt(max(0.,r*r-zMax*zMax))+.025;h=max(h,bottom-(c.y-.0425));p.y+=h;vH=h;vP=p.xyz;gl_Position=projectionMatrix*modelViewMatrix*p;}`,
+  fragmentShader:`uniform float uStorm;uniform float uNight;varying float vH;varying vec3 vP;
+  void main(){vec3 deep=mix(vec3(.025,.25,.29),vec3(.015,.09,.18),uNight);vec3 crest=mix(vec3(.12,.58,.57),vec3(.04,.28,.38),uNight);float f=smoothstep(-.07,.09,vH);vec3 col=mix(deep,crest,f);float foam=smoothstep(.05+uStorm*.035,.105+uStorm*.075,vH)+uStorm*smoothstep(.025,.14,vH)*.55;col=mix(col,vec3(.78,.91,.84),clamp(foam,0.,.88));gl_FragColor=vec4(col,.84);}`
+});
+const water=new THREE.InstancedMesh(new THREE.BoxGeometry(cell*.94,.085,cell*.94),waterMat,waterCells.length);
+for(let i=0;i<waterCells.length;i++){tempObj.position.set(...waterCells[i]);tempObj.rotation.set(0,0,0);tempObj.scale.set(1,1,1);tempObj.updateMatrix();water.setMatrixAt(i,tempObj.matrix);}
+water.instanceMatrix.needsUpdate=true;water.frustumCulled=false;water.renderOrder=4;water.name='GPU体素浪面';innerWorld.add(water);
+
+// 珊瑚岛地形
+const island=new VoxelBatch();const islandCenter=new THREE.Vector3(-2.15,0,-.35);const s=.25;
+for(let ix=-7;ix<=7;ix++)for(let iz=-6;iz<=6;iz++){
+  const x=ix*s,z=iz*s;const d=Math.sqrt((x/1.7)**2+(z/1.35)**2);const edge=.88+.13*Math.sin(ix*2.3+iz);
+  if(d<edge){const top=.13+Math.max(0,1-d)*.3;island.add(islandCenter.x+x,top-.18,islandCenter.z+z,s*.98,.38,s*.98,d>.68?0xd2b46d:0xc9a75d);
+    island.add(islandCenter.x+x,-.63,islandCenter.z+z,s,.5,s,d>.7?0x766657:0x655d52);
+    if(d<.75&&rnd()>.55)island.add(islandCenter.x+x,top+.06,islandCenter.z+z,s*.8,.13,s*.8,0xe0c77f);
+  }
+}
+island.build(innerWorld,{name:'珊瑚岛沙洲'});
+
+// 红白灯塔
+const lighthouse=new THREE.Group();lighthouse.position.set(-2.65,.28,-.35);innerWorld.add(lighthouse);
+const lightVox=new VoxelBatch();
+for(let j=0;j<16;j++){const y=j*.125;const radius=.34-j*.005;const col=Math.floor(j/3)%2?0xd9d4bd:0xa74335;
+  for(let k=0;k<8;k++){const a=k/8*TAU;lightVox.add(Math.cos(a)*radius,y,Math.sin(a)*radius,.23,.13,.23,col,0,-a,0);}
+}
+lightVox.add(0,-.1,0,.9,.22,.9,0x6f6253);lightVox.add(0,2.02,0,.82,.14,.82,0x42382e);lightVox.add(0,2.42,0,.75,.13,.75,0xa74335);
+lightVox.build(lighthouse,{name:'红白灯塔'});
+const lampGlow=new VoxelBatch();lampGlow.add(0,2.19,0,.5,.36,.5,0xffd67a);lampGlow.build(lighthouse,{glow:true,shadow:false,name:'灯塔暖灯'});
+const lamp=new THREE.PointLight(0xffb94d,3.5,4,2);lamp.position.set(0,2.2,0);lighthouse.add(lamp);
+const beamGroup=new THREE.Group();beamGroup.position.y=2.2;lighthouse.add(beamGroup);
+const beamGeo=new THREE.BufferGeometry();beamGeo.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,3,.42,.34,3,-.42,.34,0,0,0,3,-.42,-.34,3,.42,-.34,0,0,0,3,.42,-.34,3,.42,.34,0,0,0,3,-.42,.34,3,-.42,-.34],3));beamGeo.scale(.42,.5,.45);beamGeo.computeVertexNormals();
+const beamMat=new THREE.MeshBasicMaterial({color:0xffdb8a,transparent:true,opacity:.13,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending});
+mesh(beamGeo,beamMat,beamGroup);mesh(beamGeo,beamMat,beamGroup,[0,0,0],[0,Math.PI,0]);
+
+// 暖窗小屋
+const cottage=new THREE.Group();cottage.position.set(-1.35,.38,-.25);innerWorld.add(cottage);
+const house=new VoxelBatch();house.add(0,.28,0,1.0,.65,.82,0xc6b18a);house.add(0,.72,0,1.18,.18,.98,0x724332);house.add(0,.87,0,.88,.15,.98,0x854b36);house.add(0,1.0,0,.55,.13,.98,0x93553b);house.add(.25,.18,.43,.25,.45,.05,0x4b3528);house.add(-.35,1.03,-.15,.16,.55,.16,0x5a4438);house.build(cottage,{name:'暖窗小屋'});
+const windows=new VoxelBatch();windows.add(-.25,.42,.425,.25,.25,.035,0xffc46b);windows.add(.43,.42,-.1,.035,.25,.24,0xffb655);windows.build(cottage,{glow:true,shadow:false});
+const houseLight=new THREE.PointLight(0xffa43b,1.8,3,2);houseLight.position.set(-.2,.55,.7);cottage.add(houseLight);
+
+// 棕榈树
+function palm(x,z,h,lean=0){const p=new VoxelBatch();for(let i=0;i<8;i++)p.add(x+lean*i*.035,.35+i*h/8,z,.13,h/7,.13,i%2?0x795033:0x8b6038,0,0,-lean*.08);
+  const top=.35+h;for(let k=0;k<7;k++){const a=k/7*TAU;const xx=x+lean*.25+Math.cos(a)*.38,zz=z+Math.sin(a)*.38;p.add(xx,top-.08,zz,.85,.1,.2,k%2?0x447345:0x54864c,0,-a,-.12);p.add(x+lean*.25+Math.cos(a)*.75,top-.23,z+Math.sin(a)*.75,.5,.09,.16,0x3e6d41,0,-a,-.24);}p.build(innerWorld,{name:'棕榈'});}
+palm(-3.05,.15,1.15,.5);palm(-1.85,-1.05,.9,-.35);
+
+// 码头、小艇与岛上宝藏
+const dock=new VoxelBatch();for(let i=0;i<8;i++)dock.add(-1.25,-.34,.55+i*.22,.85,.12,.19,i%2?0x795235:0x8a603c);
+for(const z of[.6,1.95])for(const x of[-1.62,-.9])dock.add(x,-.65,z,.1,.9,.1,0x493322);
+dock.build(innerWorld,{name:'木码头'});
+const boat=new THREE.Group();boat.position.set(-.65,SEA+.13,1.65);boat.rotation.y=-.25;innerWorld.add(boat);
+const boatV=new VoxelBatch();boatV.add(0,0,0,.48,.16,1.0,0x70432c);boatV.add(0,.1,0,.62,.12,.72,0xa37348);boatV.add(0,.16,0,.38,.08,.55,0x372c26);boatV.add(.5,.2,0,.65,.045,.06,0xb58b55,0,0,.25);boatV.build(boat,{name:'小艇'});
+function chest(parent,x,y,z,scale=1){const g=new THREE.Group();g.position.set(x,y,z);g.scale.setScalar(scale);parent.add(g);const c=new VoxelBatch();c.add(0,0,0,.65,.32,.45,0x6b3e24);c.add(0,.24,-.03,.65,.16,.43,0x87512b,.25,0,0);for(const xx of[-.25,.25])c.add(xx,.02,.235,.07,.4,.03,0xb79245);c.add(0,.04,.25,.12,.15,.04,0xe3b655);c.build(g);const gold=new VoxelBatch();for(let i=0;i<8;i++)gold.add((rnd()-.5)*.45,.21+rnd()*.13,(rnd()-.5)*.25,.1,.07,.1,i%2?0xffcf4c:0xffe597);gold.build(g,{glow:true,shadow:false});return g;}
+chest(innerWorld,-1.85,.46,.48,.65);
+const treasureLight=new THREE.PointLight(0xffb629,2.3,3.2,2);treasureLight.position.set(-1.85,.7,.5);innerWorld.add(treasureLight);
+
+// 水下：宝箱、沉锚、双耳瓶与珊瑚
+const sunkChest=chest(innerWorld,1.45,-2.35,.65,1.0);sunkChest.rotation.set(.12,.35,-.18);
+const goldLight=new THREE.PointLight(0xffb62e,3.5,4.2,2);goldLight.position.set(1.45,-2.0,.65);innerWorld.add(goldLight);
+const anchor=new THREE.Group();anchor.position.set(.1,-2.0,-1.15);anchor.rotation.set(.1,0,-.45);innerWorld.add(anchor);
+const anchorV=new VoxelBatch();anchorV.add(0,0,0,.13,1.2,.13,0x3e4b4b);anchorV.add(0,.45,0,.75,.12,.12,0x4b5b58);anchorV.add(0,-.55,0,1.0,.13,.13,0x35413f);anchorV.add(-.45,-.38,0,.14,.48,.14,0x35413f,0,0,-.6);anchorV.add(.45,-.38,0,.14,.48,.14,0x35413f,0,0,.6);anchorV.build(anchor,{name:'沉锚'});
+const amphora=new THREE.Group();amphora.position.set(3.1,-2.25,.75);amphora.rotation.z=.35;innerWorld.add(amphora);
+const amp=new VoxelBatch();amp.add(0,0,0,.55,.65,.5,0x9b694a);amp.add(0,.43,0,.3,.3,.28,0xa87651);amp.add(0,.65,0,.4,.12,.36,0x6f4938);amp.add(-.4,.3,0,.14,.55,.14,0x9b694a,0,0,-.35);amp.add(.4,.3,0,.14,.55,.14,0x9b694a,0,0,.35);amp.build(amphora,{name:'双耳瓶'});
+const coral=new VoxelBatch();const coralCols=[0xd86365,0xe8915e,0x9d6bb2,0xe1b068];
+for(let n=0;n<20;n++){const a=rnd()*TAU;const rr=1.3+rnd()*.9;const x=-2.15+Math.cos(a)*rr;let z=-.35+Math.sin(a)*rr;const y=-1.65-rnd()*.65;const col=coralCols[n%4];const h=.35+rnd()*.55;const low=y-h*.55;const r=radiusAt(x)-.28;const zLimit=Math.sqrt(Math.max(.05,r*r-low*low))-.12;z=clamp(z,-zLimit,zLimit);coral.add(x,y,z,.12,h,.12,col);for(let b=0;b<3;b++){const side=b%2?1:-1;coral.add(x+side*.13,y+.05+b*.14,z,.28,.1,.1,col,0,0,side*.45);coral.add(x+side*.24,y+.14+b*.14,z,.1,.25,.1,col);}}
+coral.build(innerWorld,{name:'水下珊瑚群'});
+
+// 三桅方帆船与完整索具
+const ship=new THREE.Group();ship.name='三桅红纹帆船';innerWorld.add(ship);
+const hull=new VoxelBatch();
+for(let j=0;j<15;j++){const z=-.88+j*.125;const taper=1-Math.abs(z)*.6;const w=.42*taper;
+  hull.add(-w,.02,z,.13,.32,.14,0x4b2a20);hull.add(w,.02,z,.13,.32,.14,0x4b2a20);
+  hull.add(0,-.15,z,w*2,.14,.14,0x34231e);hull.add(0,.17,z,w*1.8,.09,.14,0x9b6b3f);
+  if(j%2===0){hull.add(-w-.01,.1,z,.035,.06,.13,0xd2a44e);hull.add(w+.01,.1,z,.035,.06,.13,0xd2a44e);}
+}
+hull.add(0,.24,-.52,.58,.25,.48,0x5b3827);hull.add(0,.39,-.55,.62,.08,.5,0x9b6b3f);hull.add(0,.25,.78,.2,.22,.25,0x5a3324);hull.add(0,.35,1.0,.08,.08,.45,0x8e683b,.35,0,0);
+for(const z of[-.48,.05,.55]){const mh=z===.05?2.15:1.72;hull.add(0,.35+mh/2,z,.065,mh,.065,0x5a3a24);}
+hull.build(ship,{name:'船体与三桅'});
+const sails=new VoxelBatch();
+function squareSail(z,y,w,h,main=false){const nx=Math.round(w/.13),ny=Math.round(h/.13);for(let ix=0;ix<=nx;ix++)for(let iy=0;iy<=ny;iy++){const u=ix/nx,v=iy/ny;const x=(u-.5)*w;const yy=y+(v-.5)*h;const billow=.09*Math.sin(u*Math.PI)*Math.sin(v*Math.PI);const stripe=main&&(ix===1||ix===nx-1||iy===1);sails.add(x,yy,z+billow,w/nx*.96,h/ny*.96,.045,stripe?0xa83e35:0xe5dcc0,0,0,(u-.5)*.035);}sails.add(0,y+h/2+.05,z,w+.18,.045,.045,0x4d3424);}
+squareSail(.05,1.25,1.05,.72,true);squareSail(.05,1.92,.72,.48,true);
+squareSail(.55,1.16,.82,.6,false);squareSail(.55,1.67,.56,.4,false);
+squareSail(-.48,1.12,.78,.55,false);squareSail(-.48,1.58,.52,.36,false);
+sails.add(.17,2.48,.05,.42,.16,.035,0xa83e35,0,0,-.16);sails.build(ship,{name:'红纹主帆与方帆'});
+const rig=[];function line(a,b){rig.push(...a,...b);}
+for(const z of[-.48,.05,.55]){const top=z===.05?2.47:2.08;line([0,.25,-.8],[0,top,z]);line([0,.25,.88],[0,top,z]);for(const side of[-1,1]){line([side*.38,.18,z-.2],[0,top,z]);for(let y=.45;y<1.4;y+=.18){const yy=y;line([side*.32*(1-y/top),yy,z],[0,yy+.35,z]);}}}
+line([0,2.42,.05],[0,1.8,.55]);line([0,2.42,.05],[0,1.8,-.48]);
+const rigGeo=new THREE.BufferGeometry();rigGeo.setAttribute('position',new THREE.Float32BufferAttribute(rig,3));const rigging=new THREE.LineSegments(rigGeo,new THREE.LineBasicMaterial({color:0x39291f,transparent:true,opacity:.92}));rigging.name='全套索具';ship.add(rigging);
+
+// 船艏飞沫与尾迹：共用 InstancedMesh 粒子池
+function particlePool(count,color,size,parent){const m=new THREE.InstancedMesh(new THREE.BoxGeometry(size,size,size),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.72,depthWrite:false}),count);m.frustumCulled=false;m.renderOrder=5;parent.add(m);return {mesh:m,items:Array.from({length:count},()=>({p:new THREE.Vector3(0,-20,0),v:new THREE.Vector3(),life:0,max:1})),cursor:0};}
+const spray=particlePool(72,0xc5eee5,.055,innerWorld);const wake=particlePool(110,0xd0e8d9,.075,innerWorld);
+function emit(pool,p,v,life){const it=pool.items[pool.cursor++%pool.items.length];it.p.copy(p);it.v.copy(v);it.life=life;it.max=life;}
+function updateParticles(pool,dt,gravity=0){for(let i=0;i<pool.items.length;i++){const it=pool.items[i];if(it.life>0){it.life-=dt;it.v.y-=gravity*dt;it.p.addScaledVector(it.v,dt);const sc=clamp(it.life/it.max,0,1);tempObj.position.copy(it.p);tempObj.scale.setScalar(sc);}else{tempObj.position.set(0,-20,0);tempObj.scale.setScalar(0);}tempObj.rotation.set(0,0,0);tempObj.updateMatrix();pool.mesh.setMatrixAt(i,tempObj.matrix);}pool.mesh.instanceMatrix.needsUpdate=true;}
+
+// 海鸥：六只，翼展与飞行高度均留瓶内余量
+const birds=[];const birdMat=new THREE.MeshStandardMaterial({color:0xe7e3d5,roughness:.9});
+for(let i=0;i<6;i++){const g=new THREE.Group();innerWorld.add(g);const b=new VoxelBatch();b.add(0,0,0,.12,.1,.28,0xe5e1d5);b.add(0,.04,.16,.1,.1,.1,0xf0ebdd);b.add(0,.02,.24,.045,.035,.08,0xc99b55);b.build(g,{shadow:false});const lw=mesh(new THREE.BoxGeometry(.36,.035,.13),birdMat,g,[-.2,.02,0]);const rw=mesh(new THREE.BoxGeometry(.36,.035,.13),birdMat,g,[.2,.02,0]);birds.push({g,lw,rw,phase:i/6*TAU,r:1.7+(i%3)*.38,h:1.55+(i%2)*.32});}
+
+// 高于鸟与桅杆的体素积云
+const cloudMat=new THREE.MeshStandardMaterial({color:0xe2ddcc,roughness:1,transparent:true,opacity:.88});
+const clouds=[];
+for(let i=0;i<4;i++){const g=new THREE.Group();g.position.set(-4+i*2.25,2.58,-.35+(i%2)*.7);innerWorld.add(g);const cb=new VoxelBatch();for(let j=0;j<11;j++)cb.add((rnd()-.5)*1.25,(rnd()-.5)*.3,(rnd()-.5)*.45,.38+rnd()*.42,.22+rnd()*.24,.3+rnd()*.3,0xffffff);const cm=new THREE.InstancedMesh(unitBox,cloudMat,cb.items.length);for(let j=0;j<cb.items.length;j++){const v=cb.items[j];tempObj.position.set(v.x,v.y,v.z);tempObj.scale.set(v.sx,v.sy,v.sz);tempObj.rotation.set(0,0,0);tempObj.updateMatrix();cm.setMatrixAt(j,tempObj.matrix);}cm.instanceMatrix.needsUpdate=true;g.add(cm);clouds.push({g,baseX:g.position.x,speed:.035+i*.009});}
+
+// 鲸鱼周期性跃身
+const whale=new THREE.Group();innerWorld.add(whale);const whaleV=new VoxelBatch();whaleV.add(0,0,0,1.15,.38,.42,0x355c68);whaleV.add(.55,.05,0,.42,.32,.35,0x3f6c77);whaleV.add(-.7,0,0,.35,.24,.28,0x2d505d);whaleV.add(-.95,.05,.22,.4,.1,.25,0x2d505d,0,.45,.15);whaleV.add(-.95,.05,-.22,.4,.1,.25,0x2d505d,0,-.45,.15);whaleV.add(0,-.2,0,.72,.08,.3,0x9ab6ae);whaleV.add(.52,.17,.19,.045,.045,.045,0x08191c);whaleV.add(.52,.17,-.19,.045,.045,.045,0x08191c);whaleV.build(whale,{name:'跃身鲸鱼'});
+
+// 浮标
+const buoys=[];
+for(const [x,z] of [[3.7,.8],[.5,-2.1]]){const g=new THREE.Group();innerWorld.add(g);const b=new VoxelBatch();b.add(0,0,0,.22,.28,.22,0xd8cbb1);b.add(0,.22,0,.18,.18,.18,0xb44536);b.add(0,.39,0,.06,.2,.06,0x493b30);b.build(g);const glow=new VoxelBatch();glow.add(0,.51,0,.1,.1,.1,0xffb64d);glow.build(g,{glow:true,shadow:false});buoys.push({g,x,z});}
+
+// 鱼群：单次实例绘制，水下环绕
+const fishCount=36;const fishMesh=new THREE.InstancedMesh(unitBox,new THREE.MeshStandardMaterial({color:0x9fc5ae,roughness:.7,metalness:.15}),fishCount*2);fishMesh.name='鱼群';innerWorld.add(fishMesh);
+const fishData=Array.from({length:fishCount},(_,i)=>({phase:i/fishCount*TAU,r:.8+(i%9)*.11,y:-1.1-(i%5)*.2,speed:.25+(i%3)*.05,center:new THREE.Vector3(i<18?2.2:-3.4,0,i<18?-.4:.8)}));
+// 气泡
+const bubbleCount=48;const bubbleMesh=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.045,1),new THREE.MeshBasicMaterial({color:0xa8e0d5,transparent:true,opacity:.42,depthWrite:false}),bubbleCount);bubbleMesh.renderOrder=3;innerWorld.add(bubbleMesh);
+const bubbleData=Array.from({length:bubbleCount},()=>({x:-4.8+rnd()*8.5,z:(rnd()-.5)*2.4,y:-2.55+rnd()*1.85,speed:.1+rnd()*.18,phase:rnd()*TAU}));
+// 螃蟹
+const crabs=[];for(const [x,z] of [[-2.0,.8],[-1.1,1.25],[-3.0,.3]]){const g=new THREE.Group();g.position.set(x,.35,z);innerWorld.add(g);const c=new VoxelBatch();c.add(0,0,0,.22,.1,.16,0xb54e36);c.add(-.17,.03,.08,.12,.07,.09,0xcf6942);c.add(.17,.03,.08,.12,.07,.09,0xcf6942);for(const side of[-1,1])for(let j=0;j<3;j++)c.add(side*.16,-.04,(j-1)*.07,.18,.025,.025,0x9e3f31,0,(j-1)*.3,side*.25);c.build(g,{shadow:false});crabs.push(g);}
+
+// 瓶内日月与星空
+const celestial=new THREE.Group();innerWorld.add(celestial);
+const sunMat=new THREE.MeshBasicMaterial({color:0xffc55d,transparent:true,toneMapped:false});const moonMat=new THREE.MeshBasicMaterial({color:0xd9e4dc,transparent:true,toneMapped:false});
+const sun=mesh(new THREE.IcosahedronGeometry(.18,1),sunMat,celestial);const moon=mesh(new THREE.IcosahedronGeometry(.16,1),moonMat,celestial);
+const starPos=[];for(let i=0;i<150;i++){const x=-5+rnd()*9.2;const a=.18+rnd()*(Math.PI-.36);const r=2.85;const y=Math.abs(Math.sin(a))*r;const z=Math.cos(a)*r;if(y*y+z*z<radiusAt(x)**2)starPos.push(x,y,z);}
+const starGeo=new THREE.BufferGeometry();starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));const starMat=new THREE.PointsMaterial({color:0xe6e5d4,size:.035,transparent:true,opacity:0,depthWrite:false});const stars=new THREE.Points(starGeo,starMat);stars.renderOrder=1;innerWorld.add(stars);
+// 瓶内闪电
+const lightning=new THREE.Group();innerWorld.add(lightning);const lightningMat=new THREE.LineBasicMaterial({color:0xcfe8ff,transparent:true,opacity:0,blending:THREE.AdditiveBlending});
+for(let n=0;n<3;n++){const pts=[];let x=-1.8+n*1.7,y=2.62,z=-.15;pts.push(new THREE.Vector3(x,y,z));for(let j=0;j<6;j++){x+=(rnd()-.5)*.25;y-=.18+rnd()*.12;z+=(rnd()-.5)*.12;pts.push(new THREE.Vector3(x,y,z));}const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),lightningMat);lightning.add(l);}
+const stormLight=new THREE.PointLight(0xa9d7ff,0,7,2);stormLight.position.set(0,2,0);innerWorld.add(stormLight);
+
+const state={speed:1,storm:0,stormTarget:0,day:.71,time:0,real:0,shipAngle:.85,fps:0,lightning:0};
+const phaseEl=document.getElementById('phase'),speedEl=document.getElementById('speedRead'),fpsEl=document.getElementById('fps'),sailingEl=document.getElementById('sailing'),stormBanner=document.getElementById('stormBanner');
+function setSpeed(v){state.speed=v;speedEl.textContent=v===0?'暂停':'× '+v;document.querySelectorAll('[data-speed]').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===v));}
+document.querySelectorAll('[data-speed]').forEach(b=>b.addEventListener('click',()=>setSpeed(Number(b.dataset.speed))));
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();state.stormTarget=1;stormBanner.classList.add('on');sailingEl.textContent='迎风颠簸';}});
+addEventListener('keyup',e=>{if(e.code==='Space'){e.preventDefault();state.stormTarget=0;stormBanner.classList.remove('on');sailingEl.textContent='绕岛巡航';}});
+addEventListener('blur',()=>{state.stormTarget=0;stormBanner.classList.remove('on');sailingEl.textContent='绕岛巡航';});
+const stormButton=document.getElementById('stormButton');
+function toggleStorm(){state.stormTarget=state.stormTarget>.5?0:1;const on=state.stormTarget>.5;stormBanner.classList.toggle('on',on);sailingEl.textContent=on?'迎风颠簸':'绕岛巡航';}
+stormButton.addEventListener('click',toggleStorm);
+stormButton.addEventListener('keydown',e=>{if(e.code==='Enter'){e.preventDefault();toggleStorm();}});
+renderer.domElement.addEventListener('pointerdown',()=>{if(document.activeElement)document.activeElement.blur();});
+
+const skyStops={dawn:new THREE.Color(0x70504a),day:new THREE.Color(0x456e72),dusk:new THREE.Color(0x5c4035),night:new THREE.Color(0x101b2c)};
+function dayWeights(p){
+  // 0 子夜、.25 黎明、.5 正午、.75 黄昏
+  const dawn=Math.max(0,1-Math.abs(p-.25)/.25);const day=Math.max(0,1-Math.abs(p-.5)/.25);const dusk=Math.max(0,1-Math.abs(p-.75)/.25);const night=Math.max(0,1-Math.min(p,1-p)/.25);
+  return {dawn,day,dusk,night};
+}
+let shipPitch=0,shipRoll=0,wakeTimer=0,frameCount=0,fpsTime=0,lowFpsTime=0;
+const shipPos=new THREE.Vector3(),shipPrev=new THREE.Vector3(),forward=new THREE.Vector3(),right=new THREE.Vector3();
+function updateShip(dt){
+  state.shipAngle=(state.shipAngle+dt*.105)%TAU;const a=state.shipAngle;
+  const x=-1.75+Math.cos(a)*3.25,z=.05+Math.sin(a)*1.82;
+  const dx=-Math.sin(a)*3.25,dz=Math.cos(a)*1.82;const heading=Math.atan2(dx,dz);
+  shipPrev.copy(shipPos);shipPos.set(x,SEA,z);ship.position.copy(shipPos);
+  forward.set(dx,0,dz).normalize();right.set(forward.z,0,-forward.x);
+  const bow=waveHeight(x+forward.x*.82,z+forward.z*.82,state.time,state.storm);
+  const stern=waveHeight(x-forward.x*.72,z-forward.z*.72,state.time,state.storm);
+  const port=waveHeight(x-right.x*.4,z-right.z*.4,state.time,state.storm);
+  const star=waveHeight(x+right.x*.4,z+right.z*.4,state.time,state.storm);
+  ship.position.y=SEA+(bow+stern+port+star)/4+.07;
+  shipPitch=lerp(shipPitch,-Math.atan2(bow-stern,1.54),1-Math.exp(-dt*4));shipRoll=lerp(shipRoll,Math.atan2(star-port,.8),1-Math.exp(-dt*4));
+  ship.rotation.set(shipPitch,heading,shipRoll,'YXZ');
+  wakeTimer+=dt;if(dt>0&&wakeTimer>.065){wakeTimer=0;const sternP=new THREE.Vector3(x-forward.x*.8,SEA+.06,z-forward.z*.8);emit(wake,sternP,new THREE.Vector3(-forward.x*.06,0,-forward.z*.06),2.4);
+    for(let j=0;j<2+(state.storm>.5?2:0);j++){const p=new THREE.Vector3(x+forward.x*.85+(rnd()-.5)*.16,ship.position.y+.08,z+forward.z*.85+(rnd()-.5)*.16);const v=new THREE.Vector3(forward.x*(.25+rnd()*.25)+(rnd()-.5)*.2,.35+rnd()*.45+state.storm*.45,forward.z*(.25+rnd()*.25)+(rnd()-.5)*.2);emit(spray,p,v,.45+rnd()*.35);}}
+}
+function updateDynamics(dt){
+  updateShip(dt);
+  for(let i=0;i<birds.length;i++){const b=birds[i],a=state.time*.34+b.phase;b.g.position.set(-1.7+Math.cos(a)*b.r,b.h+Math.sin(state.time*.9+b.phase)*.09,-.15+Math.sin(a)*b.r*.55);b.g.rotation.y=-a;const flap=Math.sin(state.time*8+b.phase)*.48;b.lw.rotation.z=flap;b.rw.rotation.z=-flap;}
+  for(const c of clouds){c.g.position.x=c.baseX+Math.sin(state.time*c.speed)*.65;}
+  const wp=(state.time%17)/17;const active=wp<.26;whale.visible=active;if(active){const p=wp/.26;whale.position.set(1.9+(p-.5)*1.35,SEA-.52+Math.sin(p*Math.PI)*1.38,-1.2);whale.rotation.z=(p-.5)*1.65;whale.rotation.y=-.25;}
+  for(const b of buoys){b.g.position.set(b.x,SEA+waveHeight(b.x,b.z,state.time,state.storm)+.12,b.z);b.g.rotation.z=Math.sin(state.time*1.8+b.x)*.08*(1+state.storm);}
+  boat.position.y=SEA+waveHeight(boat.position.x,boat.position.z,state.time,state.storm)+.13;boat.rotation.z=Math.sin(state.time*1.4)*.035;
+  for(let i=0;i<fishCount;i++){const f=fishData[i],a=state.time*f.speed+f.phase;const x=f.center.x+Math.cos(a)*f.r,z=f.center.z+Math.sin(a)*f.r*.55,y=f.y+Math.sin(a*2)*.08;tempObj.position.set(x,y,z);tempObj.scale.set(.17,.07,.07);tempObj.rotation.set(0,-a,0);tempObj.updateMatrix();fishMesh.setMatrixAt(i*2,tempObj.matrix);tempObj.position.set(x-Math.cos(a)*.13,y,z-Math.sin(a)*.13);tempObj.scale.set(.09,.11,.025);tempObj.rotation.set(0,-a,.45);tempObj.updateMatrix();fishMesh.setMatrixAt(i*2+1,tempObj.matrix);}fishMesh.instanceMatrix.needsUpdate=true;
+  for(let i=0;i<bubbleCount;i++){const b=bubbleData[i];b.y+=dt*b.speed;if(b.y>SEA-.08)b.y=-2.75;const x=b.x+Math.sin(state.time+b.phase)*.04;tempObj.position.set(x,b.y,b.z);tempObj.scale.setScalar(.65+(i%4)*.16);tempObj.rotation.set(0,0,0);tempObj.updateMatrix();bubbleMesh.setMatrixAt(i,tempObj.matrix);}bubbleMesh.instanceMatrix.needsUpdate=true;
+  for(let i=0;i<crabs.length;i++)crabs[i].position.x+=Math.sin(state.time*2+i)*dt*.008;
+  updateParticles(spray,dt,1.35);updateParticles(wake,dt,0);
+}
+function updateDay(dt){
+  state.day=(state.day+dt/120)%1;const w=dayWeights(state.day);const night=clamp(w.night*1.4,0,1);const daylight=clamp(w.day+w.dawn*.55+w.dusk*.35,0,1);
+  let label='子夜';if(state.day>=.15&&state.day<.4)label='黎明';else if(state.day>=.4&&state.day<.65)label='正午';else if(state.day>=.65&&state.day<.9)label='黄昏';phaseEl.textContent=label;
+  waterUniforms.uNight.value=night;volumeMat.uniforms.uNight.value=night;glassMat.uniforms.uNight.value=night;
+  starMat.opacity=night*.9*(1-state.storm*.8);beamMat.opacity=.07+night*.24;lamp.intensity=2.2+night*6;houseLight.intensity=1+night*4;goldLight.intensity=2.5+night*2;treasureLight.intensity=1.5+night*2;
+  hemi.intensity=.72+daylight*.8;key.intensity=1.25+daylight*2.2;roomGlow.intensity=28+w.dusk*24+night*12;
+  const c=new THREE.Color(0x211e19);c.lerp(skyStops.night,night*.35);scene.background.copy(c);scene.fog.color.copy(c);
+  const a=state.day*TAU-Math.PI*.5;sun.position.set(Math.cos(a)*4.15,1.05+Math.max(0,Math.sin(a))*1.35,-1.25);moon.position.set(Math.cos(a+Math.PI)*4.15,1.15+Math.max(0,Math.sin(a+Math.PI))*1.25,-1.3);
+  sunMat.opacity=clamp(daylight*1.5,0,1);moonMat.opacity=night;sun.visible=daylight>.08;moon.visible=night>.08;
+}
+function updateStorm(dt){
+  state.storm=lerp(state.storm,state.stormTarget,1-Math.exp(-dt*3.5));const s=state.storm;
+  bottleRoot.rotation.x=Math.sin(state.real*2.2)*.045*s;bottleRoot.rotation.z=0;
+  innerWorld.quaternion.copy(bottleRoot.quaternion).invert();
+  waterUniforms.uStorm.value=s;glassMat.uniforms.uStorm.value=s;
+  cloudMat.color.set(0xe2ddcc).lerp(new THREE.Color(0x3c4950),s*.9);cloudMat.opacity=.88+s*.1;
+  if(s>.35){if(state.lightning<=0&&rnd()<dt*.35)state.lightning=.16;}else state.lightning=0;
+  state.lightning=Math.max(0,state.lightning-dt);const flash=state.lightning>0?(state.lightning/.16):0;lightningMat.opacity=flash*s;stormLight.intensity=flash*22*s;renderer.toneMappingExposure=1.05+flash*.22;
+}
+function auditContainment(){
+  const probes=[ship.position,...birds.map(b=>b.g.position),...clouds.map(c=>c.g.position),whale.position,...buoys.map(b=>b.g.position)];
+  return probes.every(p=>insideBottle(p,.05));
+}
+let last=performance.now();
+function animate(now){requestAnimationFrame(animate);const rawDt=Math.min((now-last)/1000,.05);last=now;state.real+=rawDt;const dt=rawDt*state.speed;state.time+=dt;
+  updateStorm(rawDt);updateDay(dt);if(dt>0)updateDynamics(dt);else{updateParticles(spray,0);updateParticles(wake,0);}
+  waterUniforms.uTime.value=state.time;beamGroup.rotation.y=state.time*1.35;
+  controls.update();renderer.render(scene,camera);
+  frameCount++;fpsTime+=rawDt;if(fpsTime>=1){state.fps=Math.round(frameCount/fpsTime);fpsEl.textContent=state.fps+' FPS';fpsEl.style.color=state.fps>=50?'#9bbca7':'#d9b277';if(state.fps<46&&renderer.getPixelRatio()>1){lowFpsTime+=fpsTime;if(lowFpsTime>3){renderer.setPixelRatio(1);lowFpsTime=0;}}else lowFpsTime=0;frameCount=0;fpsTime=0;window.__BOTTLE_STATE__={fps:state.fps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,waterVoxels:waterCells.length,day:state.day,speed:state.speed,storm:state.storm,contained:auditContainment(),pixelRatio:renderer.getPixelRatio()};}
+}
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+updateShip(0);updateDay(0);updateDynamics(0);renderer.render(scene,camera);
+window.__BOTTLE_READY__=true;window.__BOTTLE_DEBUG__={renderer,scene,camera,controls,state,waveHeight,radiusAt,insideBottle,ship,birds,clouds,water,innerWorld,bottleRoot,setSpeed};
+document.getElementById('loading').classList.add('hide');requestAnimationFrame(animate);
+console.log('BOTTLE_READY',JSON.stringify({three:THREE.REVISION,waterVoxels:waterCells.length,objects:scene.children.length}));
+</script>
+</body>
+</html>
