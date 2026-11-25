@@ -74,6 +74,7 @@ setTimeout(function(){if(!window.__BOTTLE_READY__){const el=document.getElementB
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 const SEA = -0.62;
 const TAU = Math.PI * 2;
@@ -253,7 +254,10 @@ const volumeMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side
 const volume=mesh(bottleGeo.clone(),volumeMat,innerWorld);volume.scale.set(.986,.986,.986);volume.renderOrder=2;volume.name='渐变深水体';
 
 // 写实海面：贴合瓶内横截面的连续网格 + Gerstner 波 + 菲涅尔反射
-const waterUniforms={uTime:{value:0},uStorm:{value:0},uNight:{value:0},uSunDir:{value:new THREE.Vector3(-.5,.8,.5)}};
+const waterUniforms={uTime:{value:0},uStorm:{value:0},uNight:{value:0},uSunDir:{value:new THREE.Vector3(-.5,.8,.5)},uNormal:{value:null},uEnv:{value:null}};
+// 真实素材：水纹法线贴图 + HDRI 环境（异步加载，失败时保留程序化回退）
+new THREE.TextureLoader().load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/waternormals.jpg',t=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;waterUniforms.uNormal.value=t;});
+new RGBELoader().load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr',hdr=>{hdr.mapping=THREE.EquirectangularReflectionMapping;hdr.colorSpace=THREE.LinearSRGBColorSpace;waterUniforms.uEnv.value=hdr;});
 const waterMat=new THREE.ShaderMaterial({transparent:true,depthWrite:true,side:THREE.DoubleSide,uniforms:waterUniforms,
   vertexShader:`uniform float uTime,uStorm;varying vec3 vWorld,vNormal;varying float vCrest,vEdge;
   vec3 gDisp(vec2 p,float t,float storm){float amp=1.0+storm*2.2;vec3 off=vec3(0.0);{vec2 D=vec2(0.94000,0.34000);float k=1.10000,A=0.08500*amp,ph=k*dot(D,p)-t*1.30000,c=cos(ph),s=sin(ph);off+=vec3(0.55000*A*D.x*c,A*s,0.55000*A*D.y*c);}
@@ -272,20 +276,34 @@ const waterMat=new THREE.ShaderMaterial({transparent:true,depthWrite:true,side:T
   float rr=bottleRadius(np.x)-.035;float rad=length(np.yz);vEdge=clamp(rad/max(rr,.001),0.,1.);if(rad>rr)np.yz*=rr/rad;
   vCrest=off.y;vNormal=normalize(mat3(modelMatrix)*gNorm(base.xz,uTime,uStorm));
   vWorld=(modelMatrix*vec4(np,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(vWorld,1.);}`,
-  fragmentShader:`uniform float uStorm,uNight,uTime;uniform vec3 uSunDir;varying vec3 vWorld,vNormal;varying float vCrest,vEdge;
-  void main(){vec3 N=normalize(vNormal+vec3(sin(vWorld.x*22.+uTime*2.)*.04,0.,cos(vWorld.z*19.-uTime*1.7)*.04));vec3 V=normalize(cameraPosition-vWorld);float ndv=clamp(dot(N,V),0.,1.);
-  float fres=mix(.02,1.,pow(1.-ndv,5.));vec3 R=reflect(-V,N);
-  vec3 skyTop=mix(vec3(.36,.55,.68),vec3(.04,.08,.17),uNight),skyHor=mix(vec3(.78,.68,.52),vec3(.10,.13,.22),uNight);
-  vec3 refl=mix(skyHor,skyTop,clamp(R.y*.5+.5,0.,1.));vec3 L=normalize(uSunDir);
-  float spec=pow(max(dot(R,L),0.),42.)*(1.-uNight*.4);
-  vec3 deep=mix(vec3(.02,.23,.29),vec3(.008,.06,.13),uNight),shallow=mix(vec3(.11,.49,.50),vec3(.03,.19,.29),uNight);
-  vec3 body=mix(deep,shallow,clamp(vCrest*3.2+.42,0.,1.));vec3 col=mix(body,refl,mix(.20,1.,fres)*.78);
-  col+=spec*vec3(1.,.88,.64)*2.2;
-  float foam=smoothstep(.085+uStorm*.02,.17+uStorm*.05,vCrest)+uStorm*smoothstep(.025,.13,vCrest)*.75;
-  foam*=.72+.28*sin(vWorld.x*34.+sin(vWorld.z*27.)*2.2);
-  col=mix(col,mix(vec3(.86,.94,.93),vec3(.45,.60,.70),uNight),clamp(foam,0.,.9));
-  col*=mix(1.,.72,smoothstep(.86,1.,vEdge));
-  gl_FragColor=vec4(col,clamp(mix(.70,.94,fres*.75+foam*.35),0.,.97));}`
+  fragmentShader:`uniform float uStorm,uNight,uTime;uniform vec3 uSunDir;uniform sampler2D uNormal;uniform sampler2D uEnv;varying vec3 vWorld,vNormal;varying float vCrest,vEdge;
+  vec3 turb(vec2 uv){
+    vec3 a=texture2D(uNormal,uv*0.085+vec2(uTime*0.010,uTime*0.006)).xyz*2.0-1.0;
+    vec3 b=texture2D(uNormal,uv*0.135-vec2(uTime*0.014,uTime*0.009)).xyz*2.0-1.0;
+    return normalize(vec3(a.x+b.x,a.y*0.6+b.y*0.6,a.z+b.z));
+  }
+  void main(){
+    vec3 V=normalize(cameraPosition-vWorld);
+    vec3 detail=turb(vWorld.xz+vec2(vWorld.y*2.0,0.0));
+    vec3 N=normalize(vNormal+vec3(detail.x,0.0,detail.z)*(0.55+uStorm*0.5));
+    float ndv=clamp(dot(N,V),0.0,1.0);
+    float fres=mix(0.02,1.0,pow(1.0-ndv,5.0));
+    vec3 R=reflect(-V,N);
+    vec2 eq=vec2(atan(R.z,R.x)*0.15915494+0.5,asin(clamp(R.y,-1.0,1.0))*0.31830989+0.5);vec3 env=texture2D(uEnv,eq).rgb;
+    vec3 skyTop=mix(vec3(.30,.49,.66),vec3(.03,.06,.14),uNight),skyHor=mix(vec3(.78,.66,.50),vec3(.09,.12,.20),uNight);
+    vec3 sky=mix(skyHor,skyTop,clamp(R.y*.5+.5,0.0,1.0));
+    vec3 refl=mix(sky,env,0.72);
+    vec3 L=normalize(uSunDir);vec3 H=normalize(L+V);
+    float spec=pow(max(dot(N,H),0.0),140.0)*(1.0-uNight*.5);
+    vec3 deep=mix(vec3(.012,.16,.22),vec3(.004,.03,.08),uNight),shallow=mix(vec3(.07,.42,.43),vec3(.02,.14,.23),uNight);
+    vec3 refr=mix(deep,shallow,clamp(vCrest*2.4+.35,0.0,1.0));
+    vec3 col=mix(refr,refl,clamp(fres*.92+.12,0.0,1.0));
+    col+=spec*vec3(1.0,.92,.72)*2.6;
+    float foam=smoothstep(.075+uStorm*.02,.16+uStorm*.05,vCrest)+uStorm*smoothstep(.02,.12,vCrest)*.8;
+    foam*=.70+.30*texture2D(uNormal,vWorld.xz*0.22+uTime*0.02).z;
+    col=mix(col,mix(vec3(.90,.95,.94),vec3(.42,.56,.66),uNight),clamp(foam,0.0,.92));
+    col*=mix(1.0,.74,smoothstep(.86,1.0,vEdge));
+    gl_FragColor=vec4(col,clamp(mix(.72,.96,fres*.8+foam*.35),0.0,.97));}`
 });
 const wx0=-5.50,wx1=7.50,NX=200,NZ=56;const wpos=[],widx=[];
 function waterZMax(x){const r=radiusAt(x)-.045;return Math.sqrt(Math.max(.0025,r*r-SEA*SEA));}
